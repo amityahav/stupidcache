@@ -2,7 +2,6 @@
 #define CACHE_BUFFER_POOL_HPP
 
 #include "shard.hpp"
-#include <array>
 #include <atomic>
 #include <memory>
 #include <string>
