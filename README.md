@@ -1,1 +1,1 @@
-# stupidcache
+# simplecache
