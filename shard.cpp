@@ -4,23 +4,28 @@
 #include <unistd.h>
 #include <vector>
 
+using std::shared_mutex;
+using std::unique_lock;
+
 namespace cache {
 
 Shard::Shard(int fd, int maxEntriesPerShard)
     : fd_(fd), maxEntriesPerShard_(maxEntriesPerShard) {}
 
 bool Shard::Put(int key, const PageBuf& buf) {
-  Entry* ent = Get(key);
+  Entry* ent = get(key, false);
   if (!ent) return false;
 
-  std::unique_lock<std::shared_mutex> lock(ent->mu);
+  unique_lock<shared_mutex> lock(ent->mu);
   std::memcpy(ent->val.data(), buf.data(), pageSize);
   ent->isDirty = true;
   return true;
 }
 
-Entry* Shard::Get(int key) {
-  std::unique_lock<std::shared_mutex> lock(mu_);
+Entry* Shard::Get(int key) { return get(key, true); }
+
+Entry* Shard::get(int key, bool loadFromFile) {
+  unique_lock<shared_mutex> lock(mu_);
   auto it = m_.find(key);
   if (it != m_.end()) return it->second.get();
 
@@ -32,11 +37,11 @@ Entry* Shard::Get(int key) {
   e->key = key;
   e->isDirty = false;
 
-  {
+  if (loadFromFile) {
     ssize_t n = pread(fd_, e->val.data(), pageSize, static_cast<off_t>(key));
     if (n < 0) return nullptr;
     if (n > 0 && n < static_cast<ssize_t>(pageSize))
-      std::memset(e->val.data() + n, 0, pageSize - n);
+      return nullptr;
   }
 
   Entry* ptr = e.get();
@@ -47,10 +52,10 @@ Entry* Shard::Get(int key) {
 bool Shard::Flush() {
   std::vector<std::pair<int, Entry*>> dirty;
   {
-    std::unique_lock<std::shared_mutex> lock(mu_);
+    unique_lock<shared_mutex> lock(mu_);
     for (auto& p : m_) {
       Entry* e = p.second.get();
-      std::unique_lock<std::shared_mutex> entryLock(e->mu);
+      unique_lock<shared_mutex> entryLock(e->mu);
       if (e->isDirty) dirty.emplace_back(p.first, e);
     }
   }
@@ -58,7 +63,7 @@ bool Shard::Flush() {
   for (auto& p : dirty) {
     int offset = p.first;
     Entry* e = p.second;
-    std::unique_lock<std::shared_mutex> lock(e->mu);
+    unique_lock<shared_mutex> lock(e->mu);
     if (!e->isDirty) continue;
 
     ssize_t n = pwrite(fd_, e->val.data(), pageSize, static_cast<off_t>(offset));

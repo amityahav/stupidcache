@@ -44,6 +44,9 @@ class Shard {
   Entry* Get(int key);
 
  private:
+  /** Returns the cached entry for \a key, creating it if missing. If \a loadFromFile is false, skips pread. Returns nullptr on error. */
+  Entry* get(int key, bool loadFromFile);
+
   /** Evicts one entry from the map (caller must hold mu_). Flushes the page if dirty. Returns false on write error. */
   bool evictOneLocked();
 

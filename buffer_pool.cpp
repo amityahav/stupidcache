@@ -5,6 +5,9 @@
 #include <iostream>
 #include <unistd.h>
 
+using std::shared_lock;
+using std::shared_mutex;
+
 namespace cache {
 
 std::unique_ptr<BufferPool> BufferPool::New(const std::string& path,
@@ -33,7 +36,7 @@ bool BufferPool::Get(PageBuf& buf, int offset) {
   Entry* e = shards_[shardId]->Get(offset);
   if (!e) return false;
 
-  std::shared_lock<std::shared_mutex> lock(e->mu);
+  shared_lock<shared_mutex> lock(e->mu);
   std::memcpy(buf.data(), e->val.data(), pageSize);
   return true;
 }
